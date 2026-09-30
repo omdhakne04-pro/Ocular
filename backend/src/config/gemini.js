@@ -43,12 +43,104 @@ if (apiKey && apiKey.trim() !== '' && apiKey !== 'your_gemini_api_key_here') {
 async function analyzeImageWithGemini({ buffer, mimeType, mode }) {
   const base64Data = buffer.toString('base64');
 
-  const systemPrompt = `You are Ocular, an enterprise visual intelligence and assistive inspection engine.
-Analyze this image thoroughly based on the selected mode: "${mode}" (medicine, currency, environment, or document).
+  let systemPrompt = '';
+
+  if (mode === 'currency') {
+    systemPrompt = `You are an Indian currency image recognition assistant.
+
+Analyze the provided image carefully.
+
+Determine whether the image contains Indian currency.
+
+If Indian currency is visible, identify whether it is a banknote or coin and identify the denomination when there is sufficient visual evidence.
+
+Supported recognition denominations include Indian Rupee banknotes of ₹1, ₹2, ₹5, ₹10, ₹20, ₹50, ₹100, ₹200, ₹500 and ₹2000, and coins of ₹1, ₹2, ₹5, ₹10 and ₹20.
+
+These denominations include historical/older currency. Do not claim that a denomination is currently circulating unless this can be reliably established.
+
+Carefully examine visible numbers, text, symbols, design elements, and other visual characteristics.
+
+Never invent information.
+
+Never guess a denomination when the image does not provide sufficient evidence.
+
+If the image is blurry, dark, cropped, obstructed, too distant, or otherwise insufficient, return an uncertain result.
+
+If the image is not Indian currency, clearly state that.
+
+Your task is currency identification from an image. Do not claim that a banknote is definitely genuine or counterfeit based only on a photograph.
+
+Return ONLY a valid JSON object matching this exact structure:
+
+If Indian currency is recognized:
+{
+  "is_indian_currency": true,
+  "currency": "Indian Rupee",
+  "currency_code": "INR",
+  "symbol": "₹",
+  "type": "banknote",
+  "denomination": 500,
+  "display_name": "₹500 Indian Rupee",
+  "confidence": 0.95,
+  "side": "front",
+  "visible_text": ["500", "RESERVE BANK OF INDIA"],
+  "status": "recognized",
+  "reason": null
+}
+
+For an Indian coin:
+{
+  "is_indian_currency": true,
+  "currency": "Indian Rupee",
+  "currency_code": "INR",
+  "symbol": "₹",
+  "type": "coin",
+  "denomination": 10,
+  "display_name": "₹10 Indian Rupee Coin",
+  "confidence": 0.91,
+  "side": null,
+  "visible_text": ["10", "RUPEES"],
+  "status": "recognized",
+  "reason": null
+}
+
+If the image is NOT Indian currency:
+{
+  "is_indian_currency": false,
+  "currency": null,
+  "currency_code": null,
+  "symbol": null,
+  "type": null,
+  "denomination": null,
+  "display_name": "Indian currency not detected",
+  "confidence": 0,
+  "side": null,
+  "visible_text": [],
+  "status": "not_currency",
+  "reason": "The image does not appear to contain Indian currency."
+}
+
+If the image cannot be reliably identified:
+{
+  "is_indian_currency": null,
+  "currency": null,
+  "currency_code": null,
+  "symbol": null,
+  "type": null,
+  "denomination": null,
+  "display_name": "Unable to identify Indian currency",
+  "confidence": 0,
+  "side": null,
+  "visible_text": [],
+  "status": "uncertain",
+  "reason": "The image does not contain enough clear visual information."
+}`;
+  } else {
+    systemPrompt = `You are Ocular, an enterprise visual intelligence and assistive inspection engine.
+Analyze this image thoroughly based on the selected mode: "${mode}" (medicine, environment, or document).
 
 MODE-SPECIFIC VERIFICATION FOCUS:
 - If mode is "medicine": Inspect expiration date, batch/lot number, active ingredient dosage, tampering seals, and clear contraindication warnings. Flag expired or unsealed medications immediately.
-- If mode is "currency": Inspect denomination, serial number, watermarks, security strips, microprinting clarity, and flag counterfeit risks or counterfeit signs.
 - If mode is "environment": Inspect immediate walking paths, obstacles, staircases, surface hazards, signage, and low-hanging hazards for accessibility and navigation safety.
 - If mode is "document": Extract essential OCR headlines, dates, reference numbers, and verify legibility or missing fields.
 
@@ -65,6 +157,7 @@ Return ONLY a valid JSON object matching this exact schema:
   ],
   "spoken_script": "Short, clear natural voice readout (1-2 sentences) formatted for text-to-speech audio feedback to assist an operator or visually impaired user"
 }`;
+  }
 
   if (!genAIClient || !apiKey || apiKey === 'your_gemini_api_key_here') {
     return generateSimulatedInspection(mode);
@@ -94,32 +187,55 @@ Return ONLY a valid JSON object matching this exact schema:
           ],
           config: {
             responseMimeType: 'application/json',
-            temperature: 0.2,
+            temperature: 0.1,
           },
         });
       } catch (err38) {
-        // Fallback to gemini-2.5-flash if needed
-        response = await genAIClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: systemPrompt },
-                {
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: mimeType || 'image/jpeg',
+        try {
+          response = await genAIClient.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      data: base64Data,
+                      mimeType: mimeType || 'image/jpeg',
+                    },
                   },
-                },
-              ],
+                ],
+              },
+            ],
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
             },
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
-          },
-        });
+          });
+        } catch (err25) {
+          response = await genAIClient.models.generateContent({
+            model: 'gemini-flash-latest',
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: systemPrompt },
+                  {
+                    inlineData: {
+                      data: base64Data,
+                      mimeType: mimeType || 'image/jpeg',
+                    },
+                  },
+                ],
+              },
+            ],
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
+          });
+        }
       }
 
       rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
@@ -148,7 +264,88 @@ Return ONLY a valid JSON object matching this exact schema:
 
     const parsed = JSON.parse(cleanedText);
 
-    // Sanitize and validate minimum fields
+    // If Currency mode, construct full structured Indian Currency result + backward compatible fields
+    if (mode === 'currency') {
+      const status = parsed.status || (parsed.is_indian_currency === true ? 'recognized' : (parsed.is_indian_currency === false ? 'not_currency' : 'uncertain'));
+      const isIndian = parsed.is_indian_currency === true;
+      const type = parsed.type || (isIndian ? 'banknote' : null);
+      const denom = parsed.denomination !== undefined && parsed.denomination !== null ? parsed.denomination : null;
+      const symbol = parsed.symbol || '₹';
+      const displayName = parsed.display_name || (status === 'recognized' && denom ? `${symbol}${denom} Indian Rupee` : (status === 'uncertain' ? 'Unable to identify Indian currency' : 'Indian currency not detected'));
+      const conf = typeof parsed.confidence === 'number' ? parsed.confidence : (status === 'recognized' ? 0.95 : 0);
+      const side = parsed.side || null;
+      const visibleTextArr = Array.isArray(parsed.visible_text) ? parsed.visible_text : [];
+      const reason = parsed.reason || null;
+
+      const currencyData = {
+        is_indian_currency: parsed.is_indian_currency,
+        currency: parsed.currency || (isIndian ? 'Indian Rupee' : null),
+        currency_code: parsed.currency_code || (isIndian ? 'INR' : null),
+        symbol: parsed.symbol || (isIndian ? '₹' : null),
+        type: type,
+        denomination: denom,
+        display_name: displayName,
+        confidence: conf,
+        side: side,
+        visible_text: visibleTextArr,
+        status: status,
+        reason: reason,
+      };
+
+      let title = displayName;
+      let summary = '';
+      let anomalyWarning = 'None';
+      let spokenScript = '';
+      let keyAttributes = [];
+
+      if (status === 'recognized') {
+        const typeLabel = type === 'coin' ? 'Coin' : 'Banknote';
+        title = `${displayName} (${typeLabel})`;
+        summary = `Indian Rupee ${typeLabel} of denomination ${symbol}${denom} identified with ${Math.round(conf * 100)}% confidence.${side ? ` ${side.charAt(0).toUpperCase() + side.slice(1)} side visible.` : ''}`;
+        spokenScript = `Indian currency detected: ${displayName}, ${typeLabel}.${side ? ` ${side} side visible.` : ''} Confidence is ${Math.round(conf * 100)} percent.`;
+        keyAttributes = [
+          { key: 'Currency', value: 'Indian Rupee (INR)' },
+          { key: 'Denomination', value: `${symbol}${denom}` },
+          { key: 'Type', value: typeLabel },
+          { key: 'Side', value: side ? (side === 'front' ? 'Front (Obverse)' : 'Back (Reverse)') : 'Not Specified' },
+          { key: 'Status', value: 'Recognized' },
+          { key: 'Visible Evidence', value: visibleTextArr.length > 0 ? visibleTextArr.join(', ') : 'Visual features identified' },
+        ];
+      } else if (status === 'uncertain') {
+        title = 'Unable to Identify Indian Currency';
+        summary = reason || 'Please place the Indian currency clearly inside the scanner and try again.';
+        anomalyWarning = reason || 'The image does not contain enough clear visual information.';
+        spokenScript = 'Unable to identify Indian currency. Please place the banknote or coin clearly inside the scanner and try again.';
+        keyAttributes = [
+          { key: 'Currency Detection', value: 'Uncertain / Unclear Image' },
+          { key: 'Reason', value: reason || 'Insufficient visual evidence or blurry image' },
+        ];
+      } else {
+        // not_currency
+        title = 'No Indian Currency Detected';
+        summary = reason || 'Please scan an Indian banknote or coin.';
+        anomalyWarning = reason || 'The image does not appear to contain Indian currency.';
+        spokenScript = 'No Indian currency detected. Please scan an Indian banknote or coin.';
+        keyAttributes = [
+          { key: 'Currency Detection', value: 'No Indian Currency Detected' },
+          { key: 'Reason', value: reason || 'The scanned object is not an Indian banknote or coin' },
+        ];
+      }
+
+      return {
+        title,
+        category: 'currency',
+        confidence_score: conf,
+        detected_text: visibleTextArr.join(', '),
+        summary,
+        anomaly_warning: anomalyWarning,
+        key_attributes: keyAttributes,
+        spoken_script: spokenScript,
+        currency_data: currencyData,
+      };
+    }
+
+    // Standard mode return (medicine, environment, document)
     return {
       title: parsed.title || `${mode.toUpperCase()} Inspection Result`,
       category: parsed.category || mode,
@@ -161,7 +358,6 @@ Return ONLY a valid JSON object matching this exact schema:
     };
   } catch (error) {
     console.error('[Gemini API] Error calling Gemini Vision model:', error.message);
-    // If rate limited or quota exceeded, return structured fallback with details
     return generateSimulatedInspection(mode, `Live Vision Note: ${error.message}`);
   }
 }
@@ -191,21 +387,35 @@ function generateSimulatedInspection(mode, note = '') {
       };
     case 'currency':
       return {
-        title: 'US One Hundred Dollar Federal Reserve Note',
+        title: '₹500 Indian Rupee (Banknote)',
         category: 'currency',
-        confidence_score: 0.95,
-        detected_text: 'THE UNITED STATES OF AMERICA - 100 - ONE HUNDRED DOLLARS - SERIES 2017A - ML 49201948 B',
-        summary: 'One hundred dollar bill inspected. 3D security ribbon and color-shifting bell features align with standard currency specs.',
+        confidence_score: 0.96,
+        detected_text: 'RESERVE BANK OF INDIA - 500 - BHARAT - GUARANTEED BY THE CENTRAL GOVERNMENT - MAHATMA GANDHI',
+        summary: 'Indian Rupee Banknote of denomination ₹500 identified with 96% confidence. Front side visible featuring Mahatma Gandhi portrait.',
         anomaly_warning: 'None',
         key_attributes: [
-          { key: 'Denomination', value: '$100 USD' },
-          { key: 'Series', value: '2017A' },
-          { key: 'Serial Number', value: 'ML 49201948 B' },
-          { key: 'Security Ribbon', value: 'Present (Micro-optics verified)' },
-          { key: 'Color-Shifting Ink', value: 'Copper-to-Green Verified' },
-          { key: 'Counterfeit Risk', value: 'Very Low (< 3%)' },
+          { key: 'Currency', value: 'Indian Rupee (INR)' },
+          { key: 'Denomination', value: '₹500' },
+          { key: 'Type', value: 'Banknote' },
+          { key: 'Side', value: 'Front (Obverse)' },
+          { key: 'Status', value: 'Recognized' },
+          { key: 'Visible Evidence', value: '500, RESERVE BANK OF INDIA, BHARAT' },
         ],
-        spoken_script: 'Verified: Authentic 100 dollar bill, series 2017A. Security ribbon and watermark verified with high confidence.',
+        spoken_script: 'Indian currency detected: ₹500 Indian Rupee, Banknote. Front side visible. Confidence is 96 percent.',
+        currency_data: {
+          is_indian_currency: true,
+          currency: 'Indian Rupee',
+          currency_code: 'INR',
+          symbol: '₹',
+          type: 'banknote',
+          denomination: 500,
+          display_name: '₹500 Indian Rupee',
+          confidence: 0.96,
+          side: 'front',
+          visible_text: ['500', 'RESERVE BANK OF INDIA', 'BHARAT', 'MAHATMA GANDHI'],
+          status: 'recognized',
+          reason: null,
+        },
       };
     case 'environment':
       return {

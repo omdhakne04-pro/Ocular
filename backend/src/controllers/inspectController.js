@@ -54,14 +54,19 @@ async function analyzeImage(req, res) {
       console.warn('[Inspection] Note: Could not persist to database:', dbError.message);
     }
 
-    return res.status(200).json({
-      success: true,
-      message: 'Visual inspection completed successfully',
-      data: savedRecord || {
+    const responseData = {
+      ...(savedRecord || {
         id: 'tmp-' + Date.now(),
         ...recordPayload,
         created_at: new Date().toISOString(),
-      },
+      }),
+      currency_data: inspectionResult.currency_data || null,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'Visual inspection completed successfully',
+      data: responseData,
     });
   } catch (error) {
     console.error('[Inspection Analyze Error]:', error);

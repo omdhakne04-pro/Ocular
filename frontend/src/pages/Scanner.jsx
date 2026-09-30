@@ -33,7 +33,7 @@ export default function Scanner() {
     {
       id: 'currency',
       title: 'Currency Verification',
-      desc: 'Verify denomination, security strip & counterfeit risks',
+      desc: 'Recognize Indian Rupee banknotes (₹1-₹2000) & coins',
       icon: Banknote,
       accent: 'border-emerald-500 text-emerald-400',
     },
@@ -95,7 +95,7 @@ export default function Scanner() {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Automated OCR, anomaly detection, and voice delivery powered by Google Gemini 2.5 Flash
+            Automated Indian currency recognition, OCR, and voice delivery powered by Google Gemini Vision
           </p>
         </div>
 
@@ -191,10 +191,12 @@ export default function Scanner() {
                   <Sparkles className="w-5 h-5 text-amber-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                 </div>
                 <h4 className="text-base font-bold text-white font-mono">
-                  GEMINI 2.5 FLASH RUNNING
+                  {selectedMode === 'currency' ? 'ANALYZING CURRENCY...' : 'GEMINI MULTIMODAL RUNNING'}
                 </h4>
                 <p className="text-xs text-cyan-300 mt-1 font-mono">
-                  Extracting OCR &bull; Verifying Safety &bull; Synthesizing Voice
+                  {selectedMode === 'currency'
+                    ? 'Identifying Denomination & Currency Features...'
+                    : 'Extracting OCR • Verifying Safety • Synthesizing Voice'}
                 </p>
                 <div className="w-48 h-1.5 bg-slate-800 rounded-full mt-4 overflow-hidden">
                   <div className="w-full h-full bg-cyan-400 animate-pulse" />
@@ -206,7 +208,11 @@ export default function Scanner() {
 
         {/* Right Column: Dynamic Structured Result Card */}
         <div className="lg:col-span-5">
-          <ResultCard inspection={currentInspection} autoPlayAudio={autoPlayAudio} />
+          <ResultCard
+            inspection={currentInspection}
+            autoPlayAudio={autoPlayAudio}
+            onScanAgain={() => setCurrentInspection(null)}
+          />
         </div>
       </div>
     </div>

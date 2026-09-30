@@ -181,39 +181,66 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
       ctx.font = 'bold 14px Inter, sans-serif';
       ctx.fillText('SEAL INTACT', 515, 365);
     } else if (type === 'currency') {
-      bgGradient.addColorStop(0, '#064e3b');
-      bgGradient.addColorStop(1, '#022c22');
+      bgGradient.addColorStop(0, '#1c1917');
+      bgGradient.addColorStop(1, '#0c0a09');
       ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, 800, 600);
 
-      // Banknote base
-      ctx.fillStyle = '#e2e8f0';
-      ctx.roundRect(80, 150, 640, 300, 12);
+      // Indian Rupee ₹500 Banknote Base (Stone Grey / Sage Green)
+      ctx.fillStyle = '#6b7280';
+      ctx.roundRect(80, 150, 640, 300, 10);
       ctx.fill();
 
-      // Green border frame
-      ctx.strokeStyle = '#059669';
-      ctx.lineWidth = 10;
-      ctx.strokeRect(95, 165, 610, 270);
+      // Subtle inner background
+      ctx.fillStyle = '#9ca3af';
+      ctx.roundRect(90, 160, 620, 280, 8);
+      ctx.fill();
 
-      ctx.fillStyle = '#065f46';
-      ctx.font = 'bold 24px serif';
-      ctx.fillText('FEDERAL RESERVE NOTE', 240, 205);
-      ctx.font = 'bold 48px serif';
-      ctx.fillText('100', 120, 240);
-      ctx.fillText('100', 600, 240);
+      // Reserve Bank of India Header (Hindi & English)
+      ctx.fillStyle = '#1f2937';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillText('भारतीय रिज़र्व बैंक', 200, 185);
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText('RESERVE BANK OF INDIA', 200, 208);
+      ctx.font = '12px sans-serif';
+      ctx.fillText('GUARANTEED BY THE CENTRAL GOVERNMENT', 200, 224);
 
-      ctx.font = 'bold 28px serif';
-      ctx.fillText('UNITED STATES OF AMERICA', 180, 260);
+      // ₹500 Big Denomination numeral
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 54px monospace';
+      ctx.fillText('₹500', 560, 220);
 
-      // Security strip blue ribbon
-      ctx.fillStyle = '#2563eb';
-      ctx.fillRect(360, 165, 30, 270);
+      // Mahatma Gandhi Portrait Box area
+      ctx.fillStyle = '#e5e7eb';
+      ctx.roundRect(110, 200, 140, 200, 8);
+      ctx.fill();
+      ctx.fillStyle = '#374151';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('MAHATMA', 140, 290);
+      ctx.fillText('GANDHI', 145, 310);
 
-      ctx.fillStyle = '#047857';
-      ctx.font = 'bold 22px monospace';
-      ctx.fillText('SERIAL: ML 49201948 B', 220, 380);
-      ctx.fillText('SERIES 2017A', 460, 380);
+      // Windowed Security Thread (Green / Blue color-shift strip)
+      ctx.fillStyle = '#059669';
+      ctx.fillRect(360, 160, 16, 280);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText('RBI', 362, 230);
+      ctx.fillText('भारत', 361, 300);
+      ctx.fillText('500', 362, 370);
+
+      // Red Fort Motif description (Reverse / Feature)
+      ctx.fillStyle = '#4b5563';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('DENOMINATION: FIVE HUNDRED RUPEES', 260, 370);
+      ctx.fillText('SERIAL: 0MV 336048', 260, 400);
+
+      // Ashoka Pillar Emblem on right
+      ctx.fillStyle = '#1f2937';
+      ctx.roundRect(620, 340, 60, 80, 4);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText('EMBLEM', 626, 385);
     } else if (type === 'environment') {
       bgGradient.addColorStop(0, '#1e1b4b');
       bgGradient.addColorStop(1, '#0f172a');
@@ -483,7 +510,7 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
             disabled={isAnalyzing}
             className="px-3 py-2 rounded-lg text-xs font-medium bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-slate-700 hover:border-emerald-700 transition-colors"
           >
-            $100 Bill
+            ₹500 Note
           </button>
           <button
             onClick={() => loadPresetSample('environment')}
