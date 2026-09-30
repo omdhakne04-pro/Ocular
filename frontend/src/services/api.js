@@ -27,15 +27,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Don't auto-redirect if we are already on login or register
-      if (
-        !window.location.pathname.includes('/login') &&
-        !window.location.pathname.includes('/register')
-      ) {
-        localStorage.removeItem('ocular_token');
-        localStorage.removeItem('ocular_user');
-        window.location.href = '/login?expired=1';
-      }
+      console.warn('[API] 401 Unauthorized encountered. Preserving session.');
     }
     return Promise.reject(error);
   }

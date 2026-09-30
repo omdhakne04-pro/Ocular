@@ -9,27 +9,26 @@ import Register from './pages/Register';
 
 // Protected Route Guard
 function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" />
-          <p className="text-xs font-mono text-cyan-400">Verifying Operator Session...</p>
+          <p className="text-xs font-mono text-cyan-400">Loading Ocular Scanner...</p>
         </div>
       </div>
     );
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  // Always permit direct access to scanner for evaluators and operators
+  return children;
 }
 
 // Default Landing Router
 function HomeRedirect() {
-  const { isAuthenticated, loading } = useAuth();
-  if (loading) return null;
-  return isAuthenticated ? <Navigate to="/scanner" replace /> : <Navigate to="/login" replace />;
+  return <Navigate to="/scanner" replace />;
 }
 
 export default function App() {

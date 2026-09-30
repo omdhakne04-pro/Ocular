@@ -80,7 +80,22 @@ export default function CameraFeed({
           audio: false,
         };
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (strictErr) {
+          console.warn('[CameraFeed] Strict resolution constraint failed, trying basic video:', strictErr.message);
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: facingMode || 'environment' },
+              audio: false,
+            });
+          } catch (basicErr) {
+            console.warn('[CameraFeed] Basic facingMode constraint failed, trying any video stream:', basicErr.message);
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }
+        }
+
         streamInstance = stream;
 
         if (videoRef.current) {

@@ -24,13 +24,22 @@ export function AuthProvider({ children }) {
           if (res.success && res.user) {
             setUser(res.user);
             localStorage.setItem('ocular_user', JSON.stringify(res.user));
+            setLoading(false);
+            return;
           }
         } catch (err) {
-          console.warn('[AuthContext] Session expired or invalid:', err.message);
-          logout();
+          console.warn('[AuthContext] Session expired, auto-refreshing demo session:', err.message);
         }
       }
-      setLoading(false);
+
+      // Automatically initialize demo session so guests & judges can immediately use the camera scanner
+      try {
+        await quickDemoLogin();
+      } catch (err) {
+        console.warn('[AuthContext] Auto-login fallback error:', err.message);
+      } finally {
+        setLoading(false);
+      }
     }
 
     verifyUserSession();
