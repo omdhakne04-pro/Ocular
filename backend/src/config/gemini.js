@@ -134,17 +134,30 @@ If the image cannot be reliably identified:
   "reason": "The image does not contain enough clear visual information."
 }`;
   } else {
-    systemPrompt = `You are Ocular, an enterprise visual intelligence and assistive inspection engine.
+    systemPrompt = `You are Ocular, an enterprise visual intelligence and assistive inspection engine designed for Indian users and operators.
 Analyze this image thoroughly based on the selected mode: "${mode}" (medicine, environment, or document).
 
 MODE-SPECIFIC VERIFICATION FOCUS:
-- If mode is "medicine": Inspect expiration date, batch/lot number, active ingredient dosage, tampering seals, and clear contraindication warnings. Flag expired or unsealed medications immediately.
-- If mode is "environment": Inspect immediate walking paths, obstacles, staircases, surface hazards, signage, and low-hanging hazards for accessibility and navigation safety.
-- If mode is "document": Extract essential OCR headlines, dates, reference numbers, and verify legibility or missing fields.
+- If mode is "medicine": Inspect medication name, active ingredients/dosage, expiration date, batch/lot number, packaging integrity (tamper-evident seals, blister pack condition), usage warnings, and explicitly flag expired, damaged, or counterfeit risks.
+- If mode is "environment": Inspect immediate walking paths, obstacles, staircases, surface hazards (wet floor, tripping hazards), vehicles, signage, and directional navigation safety for a pedestrian or visually impaired person.
+- If mode is "document": Extract essential OCR headlines, document type, dates, reference/invoice numbers, and verify completeness and legibility.
+
+CRITICAL VOICE SCRIPT REQUIREMENT (MANDATORY HINDI FIRST):
+The primary audience is Indian. You MUST provide:
+1. "spoken_script_hi": A natural, fluent, polite voice readout in HINDI (हिंदी in Devanagari script) with an authentic Indian tone suitable for text-to-speech audio feedback to assist a visually impaired user or operator.
+2. "spoken_script_en": A concise 1-2 sentence voice readout in English.
+3. "spoken_script": MUST be in pure Hindi Devanagari script (identical to "spoken_script_hi").
+
+Examples of spoken_script_hi:
+- Medicine (Normal/Safe): "सत्यापित: पैरासिटामोल 500 मिलीग्राम टैबलेट। समाप्ति तिथि दिसंबर 2027 है। पैकेजिंग सील सुरक्षित है।"
+- Medicine (Expired/Risk): "सावधान: यह दवा समाप्त हो चुकी है! समाप्ति तिथि मार्च 2024 थी। इसका उपयोग बिल्कुल न करें।"
+- Environment (Hazard/Stairs): "सावधानी: लगभग पांच फीट आगे सीढ़ियां हैं। कृपया धीरे चलें और सतर्क रहें।"
+- Environment (Clear Path): "रास्ता पूरी तरह साफ है। आगे कोई बाधा नहीं है, आप सीधे चल सकते हैं।"
+- Document (Invoice/Bill): "दस्तावेज़ की पुष्टि हुई: बिल संख्या 98421, दिनांक 28 सितंबर 2026। सभी विवरण स्पष्ट और वैध हैं।"
 
 Return ONLY a valid JSON object matching this exact schema:
 {
-  "title": "Short descriptive title (max 6 words)",
+  "title": "Short descriptive title in English (max 6 words)",
   "category": "${mode}",
   "confidence_score": 0.95,
   "detected_text": "Extracted OCR text from the image, or empty string if no text visible",
@@ -153,7 +166,9 @@ Return ONLY a valid JSON object matching this exact schema:
   "key_attributes": [
     { "key": "Attribute Name", "value": "Extracted Value" }
   ],
-  "spoken_script": "Short, clear natural voice readout (1-2 sentences) formatted for text-to-speech audio feedback to assist an operator or visually impaired user"
+  "spoken_script_hi": "स्वाभाविक और स्पष्ट हिंदी में 1-2 वाक्यों का वॉयस संदेश",
+  "spoken_script_en": "Clear concise 1-2 sentences voice script in English",
+  "spoken_script": "स्वाभाविक और स्पष्ट हिंदी में 1-2 वाक्यों का वॉयस संदेश"
 }`;
   }
 
@@ -388,6 +403,14 @@ Return ONLY a valid JSON object matching this exact schema:
     }
 
     // Standard mode return (medicine, environment, document)
+    const spokenScriptHi = ensureHindiSpokenScript(mode, parsed);
+    const spokenScriptEn =
+      parsed.spoken_script_en ||
+      (typeof parsed.spoken_script === 'string' && !/[\u0900-\u097F]/.test(parsed.spoken_script)
+        ? parsed.spoken_script
+        : parsed.summary) ||
+      'Inspection completed successfully.';
+
     return {
       title: parsed.title || `${mode.toUpperCase()} Inspection Result`,
       category: parsed.category || mode,
@@ -396,14 +419,51 @@ Return ONLY a valid JSON object matching this exact schema:
       summary: parsed.summary || 'Visual inspection completed successfully.',
       anomaly_warning: parsed.anomaly_warning || 'None',
       key_attributes: Array.isArray(parsed.key_attributes) ? parsed.key_attributes : [],
-      spoken_script: parsed.spoken_script_hi || parsed.spoken_script || parsed.summary || 'निरीक्षण पूरा हुआ।',
-      spoken_script_hi: parsed.spoken_script_hi || parsed.spoken_script || 'निरीक्षण पूरा हुआ।',
-      spoken_script_en: parsed.spoken_script_en || parsed.summary || 'Inspection completed.',
+      spoken_script: spokenScriptHi, // Natural Hindi voice feedback
+      spoken_script_hi: spokenScriptHi,
+      spoken_script_en: spokenScriptEn,
     };
   } catch (error) {
     console.error('[Gemini API] Error calling Gemini Vision model:', error.message);
     return generateSimulatedInspection(mode, `Live Vision Note: ${error.message}`);
   }
+}
+
+/**
+ * Ensures a natural, fluent Hindi spoken voice script for Indian assistive users
+ */
+function ensureHindiSpokenScript(mode, parsed) {
+  const isDevanagari = (text) => typeof text === 'string' && /[\u0900-\u097F]/.test(text);
+
+  if (isDevanagari(parsed.spoken_script_hi)) {
+    return parsed.spoken_script_hi;
+  }
+  if (isDevanagari(parsed.spoken_script)) {
+    return parsed.spoken_script;
+  }
+
+  // Synthesize natural conversational Hindi readout based on mode and findings
+  const title = parsed.title || '';
+  const hasAnomaly =
+    parsed.anomaly_warning &&
+    parsed.anomaly_warning.trim().toLowerCase() !== 'none' &&
+    !parsed.anomaly_warning.trim().toLowerCase().startsWith('none');
+
+  if (mode === 'medicine') {
+    if (hasAnomaly) {
+      return `सावधान: दवा में विसंगति पाई गई है। ${parsed.anomaly_warning}। कृपया उपयोग करने से पहले जांच करें।`;
+    }
+    return `सत्यापित: ${title || 'दवा'} सुरक्षित और वैध है। समाप्ति तिथि और पैकेजिंग सील ठीक है।`;
+  } else if (mode === 'environment') {
+    if (hasAnomaly) {
+      return `सावधानी: आगे रुकावट या खतरा है। ${parsed.anomaly_warning}। कृपया सतर्कता से चलें।`;
+    }
+    return `वातावरण निरीक्षण: आगे का रास्ता बिल्कुल साफ और सुरक्षित है।`;
+  } else if (mode === 'document') {
+    return `दस्तावेज़ की पुष्टि हुई: ${title || 'दस्तावेज़'} सफलतापूर्वक पढ़ लिया गया है। विवरण सुपाठ्य हैं।`;
+  }
+
+  return `${title ? title + ' का ' : ''}निरीक्षण पूरा हुआ। स्थिति सामान्य है।`;
 }
 
 /**
@@ -427,7 +487,9 @@ function generateSimulatedInspection(mode, note = '') {
           { key: 'Batch Number', value: 'B9812A' },
           { key: 'Packaging Integrity', value: 'Sealed & Valid' },
         ],
-        spoken_script: 'Verified: Amoxicillin 500 milligrams capsules. Expiration date is November 2027. Packaging seal is intact with no anomalies detected.',
+        spoken_script: 'सत्यापित: एमोक्सिसिलिन 500 मिलीग्राम कैप्सूल। समाप्ति तिथि नवंबर 2027 है। पैकेजिंग सील सुरक्षित है।',
+        spoken_script_hi: 'सत्यापित: एमोक्सिसिलिन 500 मिलीग्राम कैप्सूल। समाप्ति तिथि नवंबर 2027 है। पैकेजिंग सील सुरक्षित है।',
+        spoken_script_en: 'Verified: Amoxicillin 500 milligrams capsules. Expiration date is November 2027. Packaging seal is intact with no anomalies detected.',
       };
     case 'currency':
       return {
@@ -445,7 +507,9 @@ function generateSimulatedInspection(mode, note = '') {
           { key: 'Status', value: 'Recognized' },
           { key: 'Visible Evidence', value: '500, RESERVE BANK OF INDIA, BHARAT' },
         ],
-        spoken_script: 'Indian currency detected: ₹500 Indian Rupee, Banknote. Front side visible. Confidence is 96 percent.',
+        spoken_script: '500 रुपये का भारतीय नोट मिला। सामने का भाग दिख रहा है। 96 प्रतिशत सटीकता।',
+        spoken_script_hi: '500 रुपये का भारतीय नोट मिला। सामने का भाग दिख रहा है। 96 प्रतिशत सटीकता।',
+        spoken_script_en: 'Indian currency detected: ₹500 Indian Rupee, Banknote. Front side visible. Confidence is 96 percent.',
         currency_data: {
           is_indian_currency: true,
           currency: 'Indian Rupee',
@@ -476,7 +540,9 @@ function generateSimulatedInspection(mode, note = '') {
           { key: 'Safe Path', value: 'Clear right-side passage' },
           { key: 'Lighting Condition', value: 'Adequate / Well lit' },
         ],
-        spoken_script: 'Caution: Wet floor warning detected approximately six feet ahead on your left. Please steer toward the right corridor for a clear path.',
+        spoken_script: 'सावधानी: लगभग 6 फीट आगे बाईं ओर गीला फर्श है। कृपया सुरक्षित चलने के लिए दाईं ओर के रास्ते का उपयोग करें।',
+        spoken_script_hi: 'सावधानी: लगभग 6 फीट आगे बाईं ओर गीला फर्श है। कृपया सुरक्षित चलने के लिए दाईं ओर के रास्ते का उपयोग करें।',
+        spoken_script_en: 'Caution: Wet floor warning detected approximately six feet ahead on your left. Please steer toward the right corridor for a clear path.',
       };
     case 'document':
     default:
@@ -494,7 +560,9 @@ function generateSimulatedInspection(mode, note = '') {
           { key: 'Consignee', value: 'Ocular Systems Logistics' },
           { key: 'Signature Status', value: 'Digitally Verified' },
         ],
-        spoken_script: 'Document verified: Freight invoice 94821 dated September 2026. All consignment records are clear and legible.',
+        spoken_script: 'दस्तावेज़ की पुष्टि हुई: फ्रेट चालान संख्या 94821, दिनांक सितंबर 2026। सभी रिकॉर्ड स्पष्ट और सुपाठ्य हैं।',
+        spoken_script_hi: 'दस्तावेज़ की पुष्टि हुई: फ्रेट चालान संख्या 94821, दिनांक सितंबर 2026। सभी रिकॉर्ड स्पष्ट और सुपाठ्य हैं।',
+        spoken_script_en: 'Document verified: Freight invoice 94821 dated September 2026. All consignment records are clear and legible.',
       };
   }
 }

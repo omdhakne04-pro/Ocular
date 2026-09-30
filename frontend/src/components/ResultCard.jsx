@@ -60,16 +60,21 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
     const currentVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices() || [];
 
     if (targetLang === 'hi') {
-      // 1. Try to find an authentic Hindi voice (hi-IN, Google हिन्दी, Microsoft Hemant/Kalpana, Swara, Madhur)
+      // 1. Try to find an authentic Hindi voice (hi-IN, Google हिन्दी, Microsoft Hemant/Kalpana, Swara, Madhur, Lekha, etc.)
       const hindiVoice = currentVoices.find((v) =>
         v.lang === 'hi-IN' ||
         v.lang === 'hi_IN' ||
         v.lang.toLowerCase().startsWith('hi') ||
         v.name.toLowerCase().includes('hindi') ||
+        v.name.toLowerCase().includes('हिन्दी') ||
         v.name.toLowerCase().includes('kalpana') ||
         v.name.toLowerCase().includes('hemant') ||
         v.name.toLowerCase().includes('swara') ||
-        v.name.toLowerCase().includes('madhur')
+        v.name.toLowerCase().includes('madhur') ||
+        v.name.toLowerCase().includes('lekha') ||
+        v.name.toLowerCase().includes('kavya') ||
+        v.name.toLowerCase().includes('aarav') ||
+        v.name.toLowerCase().includes('priya')
       );
       if (hindiVoice) return { voice: hindiVoice, lang: hindiVoice.lang || 'hi-IN' };
 

@@ -105,7 +105,7 @@ export default function Scanner() {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Zero-touch real-time Indian currency recognition with instant voice announcements powered by Google Gemini Vision
+            Zero-touch real-time visual inspection with instant Hindi voice feedback across all modes (Medicine, Currency, Scene, Document)
           </p>
         </div>
 

@@ -62,7 +62,26 @@ export default function Dashboard() {
     if ('speechSynthesis' in window && text) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.05;
+      utterance.rate = 0.95;
+      const isHindi = /[\u0900-\u097F]/.test(text);
+      const voices = window.speechSynthesis.getVoices() || [];
+      if (isHindi) {
+        utterance.lang = 'hi-IN';
+        const hiVoice = voices.find(
+          (v) =>
+            v.lang === 'hi-IN' ||
+            v.lang === 'hi_IN' ||
+            v.lang.toLowerCase().startsWith('hi') ||
+            v.name.toLowerCase().includes('hindi') ||
+            v.name.toLowerCase().includes('हिन्दी') ||
+            v.name.toLowerCase().includes('kalpana') ||
+            v.name.toLowerCase().includes('hemant') ||
+            v.name.toLowerCase().includes('swara') ||
+            v.name.toLowerCase().includes('madhur') ||
+            v.name.toLowerCase().includes('lekha')
+        );
+        if (hiVoice) utterance.voice = hiVoice;
+      }
       window.speechSynthesis.speak(utterance);
     }
   };
