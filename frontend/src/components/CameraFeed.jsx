@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, RefreshCw, FlipHorizontal, Image as ImageIcon, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Camera, Upload, RefreshCw, FlipHorizontal, Image as ImageIcon, Sparkles, CheckCircle2, AlertTriangle, Zap, ZapOff } from 'lucide-react';
 
-export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode }) {
+export default function CameraFeed({
+  onImageCaptured,
+  isAnalyzing,
+  selectedMode,
+  autoScanEnabled,
+  onToggleAutoScan,
+}) {
   const [activeTab, setActiveTab] = useState('webcam'); // 'webcam' | 'upload'
   const [streamActive, setStreamActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
@@ -9,9 +15,48 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [flashAnimation, setFlashAnimation] = useState(false);
 
+  // Real-time hands-free auto-scan state (defaults to true for currency mode)
+  const [internalAutoScan, setInternalAutoScan] = useState(selectedMode === 'currency');
+  const autoScanActive = autoScanEnabled !== undefined ? autoScanEnabled : internalAutoScan;
+  const setAutoScanActive = onToggleAutoScan || setInternalAutoScan;
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
+  const autoScanTimerRef = useRef(null);
+
+  // When mode changes to currency, auto-enable auto-scan for seamless hands-free detection
+  useEffect(() => {
+    if (selectedMode === 'currency') {
+      setAutoScanActive(true);
+    }
+  }, [selectedMode]);
+
+  // Hands-free Real-Time Continuous Auto-Scanning loop
+  useEffect(() => {
+    if (!autoScanActive || activeTab !== 'webcam' || !streamActive) {
+      if (autoScanTimerRef.current) {
+        clearTimeout(autoScanTimerRef.current);
+        autoScanTimerRef.current = null;
+      }
+      return;
+    }
+
+    // If Gemini model analysis is currently processing in-flight, wait until complete
+    if (isAnalyzing) return;
+
+    // Schedule hands-free capture every 2.6 seconds
+    autoScanTimerRef.current = setTimeout(() => {
+      captureSnapshot({ silent: true });
+    }, 2600);
+
+    return () => {
+      if (autoScanTimerRef.current) {
+        clearTimeout(autoScanTimerRef.current);
+        autoScanTimerRef.current = null;
+      }
+    };
+  }, [autoScanActive, activeTab, streamActive, isAnalyzing]);
 
   // Initialize or restart camera stream
   useEffect(() => {
@@ -73,12 +118,14 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
   };
 
   // Capture snapshot from webcam video canvas
-  const captureSnapshot = () => {
+  const captureSnapshot = (options = { silent: false }) => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    // Trigger HUD camera shutter flash animation
-    setFlashAnimation(true);
-    setTimeout(() => setFlashAnimation(false), 250);
+    if (!options.silent) {
+      // Trigger shutter flash animation on manual button capture
+      setFlashAnimation(true);
+      setTimeout(() => setFlashAnimation(false), 250);
+    }
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -344,52 +391,91 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
         </div>
 
         {activeTab === 'webcam' && streamActive && (
-          <button
-            onClick={toggleFacingMode}
-            title="Switch front/back camera"
-            aria-label="Switch camera"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors"
-          >
-            <FlipHorizontal className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Flip Camera</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAutoScanActive(!autoScanActive)}
+              title="Continuous real-time hands-free auto-scan"
+              aria-label="Toggle auto-scan"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                autoScanActive
+                  ? 'bg-emerald-950/90 border-emerald-400 text-emerald-300 shadow-md shadow-emerald-500/20'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${autoScanActive ? 'text-emerald-400 fill-emerald-400 animate-pulse' : ''}`} />
+              <span>Auto-Scan: {autoScanActive ? 'ON' : 'OFF'}</span>
+            </button>
+            <button
+              onClick={toggleFacingMode}
+              title="Switch front/back camera"
+              aria-label="Switch camera"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors"
+            >
+              <FlipHorizontal className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Flip Camera</span>
+            </button>
+          </div>
         )}
       </div>
 
       {/* Viewport Area */}
       <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border-2 border-slate-800 shadow-2xl flex items-center justify-center">
-        {/* Shutter flash effect */}
+        {/* Shutter flash effect for manual captures */}
         {flashAnimation && (
           <div className="absolute inset-0 bg-white z-40 animate-out fade-out duration-200 pointer-events-none" />
+        )}
+
+        {/* Real-time laser sweep line across camera stream when auto-scanning */}
+        {autoScanActive && streamActive && activeTab === 'webcam' && (
+          <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#34d399] animate-scan-laser pointer-events-none z-20" />
         )}
 
         {/* HUD Targeting Reticle & Overlay */}
         <div className="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-6">
           <div className="flex justify-between items-start">
-            <div className="w-8 h-8 border-t-2 border-l-2 border-cyan-400" />
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-cyan-500/40 text-[11px] font-mono text-cyan-400">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-              <span>HUD RETICLE ACTIVE</span>
+            <div className={`w-8 h-8 border-t-2 border-l-2 ${autoScanActive ? 'border-emerald-400' : 'border-cyan-400'}`} />
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-slate-700 text-[11px] font-mono">
+              {autoScanActive ? (
+                <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span>⚡ REAL-TIME AUTO-SCAN (HANDS-FREE)</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-cyan-400">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  <span>HUD RETICLE ACTIVE</span>
+                </div>
+              )}
             </div>
-            <div className="w-8 h-8 border-t-2 border-r-2 border-cyan-400" />
+            <div className={`w-8 h-8 border-t-2 border-r-2 ${autoScanActive ? 'border-emerald-400' : 'border-cyan-400'}`} />
           </div>
 
           {/* Central alignment crosshair */}
-          <div className="self-center flex flex-col items-center justify-center opacity-60">
-            <div className="w-16 h-16 border border-dashed border-cyan-400/80 rounded-2xl flex items-center justify-center">
-              <div className="w-2 h-2 bg-cyan-400 rounded-full" />
+          <div className="self-center flex flex-col items-center justify-center opacity-70">
+            <div className={`w-20 h-20 border border-dashed rounded-2xl flex items-center justify-center ${
+              autoScanActive ? 'border-emerald-400/80 shadow-[0_0_20px_rgba(52,211,153,0.2)]' : 'border-cyan-400/80'
+            }`}>
+              <div className={`w-2.5 h-2.5 rounded-full ${autoScanActive ? 'bg-emerald-400 animate-pulse' : 'bg-cyan-400'}`} />
             </div>
-            <span className="mt-2 text-[10px] tracking-widest text-cyan-300 font-mono uppercase">
-              Align item in frame
+            <span className={`mt-2 text-[10px] tracking-widest font-mono uppercase ${
+              autoScanActive ? 'text-emerald-300' : 'text-cyan-300'
+            }`}>
+              {autoScanActive ? 'Hold currency in frame • Auto-scanning' : 'Align item in frame'}
             </span>
           </div>
 
           <div className="flex justify-between items-end">
-            <div className="w-8 h-8 border-b-2 border-l-2 border-cyan-400" />
-            <div className="text-[10px] text-slate-400 font-mono">
-              MODE: {selectedMode.toUpperCase()}
-            </div>
-            <div className="w-8 h-8 border-b-2 border-r-2 border-cyan-400" />
+            <div className={`w-8 h-8 border-b-2 border-l-2 ${autoScanActive ? 'border-emerald-400' : 'border-cyan-400'}`} />
+            {autoScanActive ? (
+              <div className="text-[10px] font-mono bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-3 py-1 rounded-full shadow-md">
+                AUTO-SCAN: CONTINUOUS REAL-TIME
+              </div>
+            ) : (
+              <div className="text-[10px] text-slate-400 font-mono">
+                MODE: {selectedMode.toUpperCase()}
+              </div>
+            )}
+            <div className={`w-8 h-8 border-b-2 border-r-2 ${autoScanActive ? 'border-emerald-400' : 'border-cyan-400'}`} />
           </div>
         </div>
 
@@ -476,14 +562,29 @@ export default function CameraFeed({ onImageCaptured, isAnalyzing, selectedMode 
       {/* Action Trigger Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {activeTab === 'webcam' ? (
-          <button
-            onClick={captureSnapshot}
-            disabled={isAnalyzing}
-            className="flex-1 min-w-[200px] flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-cyan-500 to-cyan-400 text-black shadow-lg shadow-cyan-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50"
-          >
-            <Camera className="w-5 h-5 stroke-[2.5]" />
-            <span>{isAnalyzing ? 'Processing Frame...' : 'CAPTURE & ANALYZE SNAPSHOT'}</span>
-          </button>
+          <div className="flex flex-1 flex-col sm:flex-row gap-2.5">
+            <button
+              type="button"
+              onClick={() => setAutoScanActive(!autoScanActive)}
+              className={`flex-1 min-w-[200px] flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all border ${
+                autoScanActive
+                  ? 'bg-emerald-500 text-black border-emerald-400 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400'
+                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
+              }`}
+            >
+              <Zap className={`w-4 h-4 ${autoScanActive ? 'fill-black animate-pulse' : 'text-slate-400'}`} />
+              <span>{autoScanActive ? '⚡ Auto-Scan: ACTIVE (Hands-Free)' : 'Turn On Auto-Scan'}</span>
+            </button>
+
+            <button
+              onClick={() => captureSnapshot({ silent: false })}
+              disabled={isAnalyzing}
+              className="flex-1 min-w-[200px] flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-cyan-400 text-black shadow-lg shadow-cyan-500/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50"
+            >
+              <Camera className="w-4 h-4 stroke-[2.5]" />
+              <span>{isAnalyzing ? 'Analyzing Frame...' : 'Manual Snapshot'}</span>
+            </button>
+          </div>
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}

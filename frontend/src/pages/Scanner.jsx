@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { inspectAPI } from '../services/api';
 import CameraFeed from '../components/CameraFeed';
 import ResultCard from '../components/ResultCard';
@@ -13,29 +13,39 @@ import {
   Loader2,
   AlertCircle,
   HelpCircle,
+  Zap,
+  ZapOff,
 } from 'lucide-react';
 
 export default function Scanner() {
-  const [selectedMode, setSelectedMode] = useState('medicine');
+  const [selectedMode, setSelectedMode] = useState('currency'); // Default to currency mode for immediate recognition
   const [currentInspection, setCurrentInspection] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
+  const [autoScanEnabled, setAutoScanEnabled] = useState(true); // Default hands-free auto-scan active
   const [errorMsg, setErrorMsg] = useState(null);
 
+  // Automatically enable auto-scan when in currency verification mode
+  useEffect(() => {
+    if (selectedMode === 'currency') {
+      setAutoScanEnabled(true);
+    }
+  }, [selectedMode]);
+
   const modes = [
+    {
+      id: 'currency',
+      title: 'Indian Currency Recognition',
+      desc: 'Hands-free auto-scan for Indian banknotes (₹1-₹2000) & coins',
+      icon: Banknote,
+      accent: 'border-emerald-500 text-emerald-400',
+    },
     {
       id: 'medicine',
       title: 'Medicine & Packaging',
       desc: 'Inspect expiry dates, active dosage, and tamper seals',
       icon: Pill,
       accent: 'border-cyan-500 text-cyan-400',
-    },
-    {
-      id: 'currency',
-      title: 'Currency Verification',
-      desc: 'Recognize Indian Rupee banknotes (₹1-₹2000) & coins',
-      icon: Banknote,
-      accent: 'border-emerald-500 text-emerald-400',
     },
     {
       id: 'environment',
@@ -89,34 +99,57 @@ export default function Scanner() {
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
               Visual Inspection Studio
             </h1>
-            <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-cyan-950 text-cyan-400 text-xs font-mono font-medium border border-cyan-800">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping"></span>
-              Live Multi-Modal
+            <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-400 text-xs font-mono font-medium border border-emerald-800">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              Real-Time Auto-Scanner
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Automated Indian currency recognition, OCR, and voice delivery powered by Google Gemini Vision
+            Zero-touch real-time Indian currency recognition with instant voice announcements powered by Google Gemini Vision
           </p>
         </div>
 
-        {/* Audio Autoplay Toggle */}
-        <div className="flex items-center gap-2 bg-slate-900/90 px-3.5 py-2 rounded-xl border border-slate-800 self-start md:self-auto">
-          <button
-            onClick={() => setAutoPlayAudio(!autoPlayAudio)}
-            className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
-          >
-            {autoPlayAudio ? (
-              <>
-                <Volume2 className="w-4 h-4 text-cyan-400" />
-                <span>Auto Voice Feedback: <strong className="text-cyan-400">ON</strong></span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-4 h-4 text-slate-500" />
-                <span>Auto Voice Feedback: <strong className="text-slate-500">OFF</strong></span>
-              </>
-            )}
-          </button>
+        {/* Audio & Auto-Scan Controls Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+          {/* Hands-free Auto-Scan Toggle */}
+          <div className="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setAutoScanEnabled(!autoScanEnabled)}
+              className="flex items-center gap-2 text-xs font-semibold transition-colors"
+            >
+              {autoScanEnabled ? (
+                <>
+                  <Zap className="w-4 h-4 text-emerald-400 animate-pulse fill-emerald-400" />
+                  <span className="text-slate-300">Hands-Free Auto-Scan: <strong className="text-emerald-400 font-bold">ON</strong></span>
+                </>
+              ) : (
+                <>
+                  <ZapOff className="w-4 h-4 text-slate-500" />
+                  <span className="text-slate-400">Hands-Free Auto-Scan: <strong className="text-slate-500">OFF</strong></span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Audio Autoplay Toggle */}
+          <div className="flex items-center gap-2 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setAutoPlayAudio(!autoPlayAudio)}
+              className="flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+            >
+              {autoPlayAudio ? (
+                <>
+                  <Volume2 className="w-4 h-4 text-cyan-400" />
+                  <span>Voice Feedback: <strong className="text-cyan-400">ON</strong></span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-4 h-4 text-slate-500" />
+                  <span>Voice Feedback: <strong className="text-slate-500">OFF</strong></span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -181,27 +214,38 @@ export default function Scanner() {
               onImageCaptured={handleImageCaptured}
               isAnalyzing={isAnalyzing}
               selectedMode={selectedMode}
+              autoScanEnabled={autoScanEnabled}
+              onToggleAutoScan={setAutoScanEnabled}
             />
 
             {/* Scanning HUD Overlay when model inference is running */}
             {isAnalyzing && (
-              <div className="absolute inset-0 rounded-2xl bg-black/75 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-6 text-center">
-                <div className="relative mb-4">
-                  <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
-                  <Sparkles className="w-5 h-5 text-amber-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              autoScanEnabled ? (
+                /* Unobtrusive floating top badge during auto-scan so camera feed remains fully visible */
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 px-4 py-2 rounded-full bg-slate-950/85 backdrop-blur-md border border-emerald-500/70 shadow-2xl shadow-emerald-500/30 text-xs font-mono text-emerald-300 pointer-events-none animate-pulse">
+                  <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
+                  <span className="font-bold">⚡ GEMINI ANALYZING SNAPSHOT...</span>
                 </div>
-                <h4 className="text-base font-bold text-white font-mono">
-                  {selectedMode === 'currency' ? 'ANALYZING CURRENCY...' : 'GEMINI MULTIMODAL RUNNING'}
-                </h4>
-                <p className="text-xs text-cyan-300 mt-1 font-mono">
-                  {selectedMode === 'currency'
-                    ? 'Identifying Denomination & Currency Features...'
-                    : 'Extracting OCR • Verifying Safety • Synthesizing Voice'}
-                </p>
-                <div className="w-48 h-1.5 bg-slate-800 rounded-full mt-4 overflow-hidden">
-                  <div className="w-full h-full bg-cyan-400 animate-pulse" />
+              ) : (
+                /* Full backdrop modal only on manual capture mode */
+                <div className="absolute inset-0 rounded-2xl bg-black/75 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-6 text-center">
+                  <div className="relative mb-4">
+                    <Loader2 className="w-12 h-12 text-cyan-400 animate-spin" />
+                    <Sparkles className="w-5 h-5 text-amber-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                  </div>
+                  <h4 className="text-base font-bold text-white font-mono">
+                    {selectedMode === 'currency' ? 'ANALYZING CURRENCY...' : 'GEMINI MULTIMODAL RUNNING'}
+                  </h4>
+                  <p className="text-xs text-cyan-300 mt-1 font-mono">
+                    {selectedMode === 'currency'
+                      ? 'Identifying Denomination & Currency Features...'
+                      : 'Extracting OCR • Verifying Safety • Synthesizing Voice'}
+                  </p>
+                  <div className="w-48 h-1.5 bg-slate-800 rounded-full mt-4 overflow-hidden">
+                    <div className="w-full h-full bg-cyan-400 animate-pulse" />
+                  </div>
                 </div>
-              </div>
+              )
             )}
           </div>
         </div>

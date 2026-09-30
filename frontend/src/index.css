@@ -61,3 +61,24 @@
     linear-gradient(to right, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
 }
+
+/* Real-Time Laser Scan-line Animation */
+@keyframes scanline {
+  0% {
+    top: 0%;
+    opacity: 0.4;
+  }
+  50% {
+    top: 96%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.4;
+  }
+}
+
+.animate-scan-laser {
+  animation: scanline 2.2s ease-in-out infinite;
+}
+

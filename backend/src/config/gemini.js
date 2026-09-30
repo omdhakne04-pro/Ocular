@@ -50,29 +50,21 @@ async function analyzeImageWithGemini({ buffer, mimeType, mode }) {
 
 Analyze the provided image carefully.
 
-Determine whether the image contains Indian currency.
+Determine whether the image contains Indian currency (a single banknote/coin, or multiple banknotes/coins).
 
-If Indian currency is visible, identify whether it is a banknote or coin and identify the denomination when there is sufficient visual evidence.
+If one or more Indian banknotes or coins are visible, identify the denomination(s) and features.
 
 Supported recognition denominations include Indian Rupee banknotes of ₹1, ₹2, ₹5, ₹10, ₹20, ₹50, ₹100, ₹200, ₹500 and ₹2000, and coins of ₹1, ₹2, ₹5, ₹10 and ₹20.
 
-These denominations include historical/older currency. Do not claim that a denomination is currently circulating unless this can be reliably established.
+Carefully examine visible numbers, text, symbols, colors, portraits, and other visual characteristics.
 
-Carefully examine visible numbers, text, symbols, design elements, and other visual characteristics.
+Never invent information. If the image does not contain Indian currency, or is completely unreadable/pitch black, state that clearly.
 
-Never invent information.
-
-Never guess a denomination when the image does not provide sufficient evidence.
-
-If the image is blurry, dark, cropped, obstructed, too distant, or otherwise insufficient, return an uncertain result.
-
-If the image is not Indian currency, clearly state that.
-
-Your task is currency identification from an image. Do not claim that a banknote is definitely genuine or counterfeit based only on a photograph.
+If one or more Indian banknotes are visible, mark status: "recognized", is_indian_currency: true. If multiple notes are visible, pick the primary or highest denomination for "denomination", list all recognized denominations and text in "visible_text", and reflect them in "display_name".
 
 Return ONLY a valid JSON object matching this exact structure:
 
-If Indian currency is recognized:
+If Indian currency is recognized (single or multiple notes):
 {
   "is_indian_currency": true,
   "currency": "Indian Rupee",
@@ -81,9 +73,9 @@ If Indian currency is recognized:
   "type": "banknote",
   "denomination": 500,
   "display_name": "₹500 Indian Rupee",
-  "confidence": 0.95,
+  "confidence": 0.98,
   "side": "front",
-  "visible_text": ["500", "RESERVE BANK OF INDIA"],
+  "visible_text": ["500", "RESERVE BANK OF INDIA", "MAHATMA GANDHI"],
   "status": "recognized",
   "reason": null
 }
@@ -167,33 +159,21 @@ Return ONLY a valid JSON object matching this exact schema:
     let rawText = '';
 
     if (!useLegacySDK && genAIClient.models && typeof genAIClient.models.generateContent === 'function') {
-      let response;
-      try {
-        response = await genAIClient.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: systemPrompt },
-                {
-                  inlineData: {
-                    data: base64Data,
-                    mimeType: mimeType || 'image/jpeg',
-                  },
-                },
-              ],
-            },
-          ],
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-          },
-        });
-      } catch (err38) {
+      const candidateModels = [
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-3.6-flash',
+        'gemini-3.8-flash'
+      ];
+
+      let lastError = null;
+      let response = null;
+
+      for (const modelName of candidateModels) {
         try {
           response = await genAIClient.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: modelName,
             contents: [
               {
                 role: 'user',
@@ -213,46 +193,46 @@ Return ONLY a valid JSON object matching this exact schema:
               temperature: 0.1,
             },
           });
-        } catch (err25) {
-          response = await genAIClient.models.generateContent({
-            model: 'gemini-flash-latest',
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  { text: systemPrompt },
-                  {
-                    inlineData: {
-                      data: base64Data,
-                      mimeType: mimeType || 'image/jpeg',
-                    },
-                  },
-                ],
-              },
-            ],
-            config: {
-              responseMimeType: 'application/json',
-              temperature: 0.1,
-            },
-          });
+          if (response && response.text) {
+            console.log(`[Gemini API] Successfully generated analysis with model: ${modelName}`);
+            break;
+          }
+        } catch (modelErr) {
+          console.warn(`[Gemini API] Model ${modelName} returned: ${modelErr.message}. Trying next candidate...`);
+          lastError = modelErr;
         }
+      }
+
+      if (!response && lastError) {
+        throw lastError;
       }
 
       rawText = response.text || (response.candidates && response.candidates[0]?.content?.parts[0]?.text) || '';
     } else {
       // Legacy or alternative client call
-      const model = genAIClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const result = await model.generateContent([
-        systemPrompt,
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType || 'image/jpeg',
-          },
-        },
-      ]);
-      const response = await result.response;
-      rawText = response.text();
+      const candidateModels = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+      let response = null;
+      for (const mName of candidateModels) {
+        try {
+          const model = genAIClient.getGenerativeModel({ model: mName });
+          const result = await model.generateContent([
+            systemPrompt,
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: mimeType || 'image/jpeg',
+              },
+            },
+          ]);
+          response = await result.response;
+          if (response) {
+            rawText = response.text();
+            break;
+          }
+        } catch (e) {
+          console.warn(`[Gemini Legacy] ${mName} error: ${e.message}`);
+        }
+      }
     }
 
     // Clean JSON response (strip markdown wrappers like ```json ... ```)
@@ -262,26 +242,53 @@ Return ONLY a valid JSON object matching this exact schema:
       .replace(/\s*```$/i, '')
       .trim();
 
-    const parsed = JSON.parse(cleanedText);
+    const parsedRaw = JSON.parse(cleanedText);
+    
+    // Check if Gemini returned an array of items (e.g. multiple notes in frame)
+    const isArrayResult = Array.isArray(parsedRaw);
+    const parsed = isArrayResult ? (parsedRaw[0] || {}) : parsedRaw;
 
     // If Currency mode, construct full structured Indian Currency result + backward compatible fields
     if (mode === 'currency') {
-      const status = parsed.status || (parsed.is_indian_currency === true ? 'recognized' : (parsed.is_indian_currency === false ? 'not_currency' : 'uncertain'));
-      const isIndian = parsed.is_indian_currency === true;
+      const isIndian = isArrayResult
+        ? parsedRaw.some((item) => item.is_indian_currency === true)
+        : parsed.is_indian_currency === true;
+
+      const recognizedItems = isArrayResult
+        ? parsedRaw.filter((item) => item.is_indian_currency === true || item.status === 'recognized' || item.status === 'success')
+        : (isIndian ? [parsed] : []);
+
+      const hasMultipleNotes = recognizedItems.length > 1;
+
+      const status = (isIndian || recognizedItems.length > 0)
+        ? 'recognized'
+        : (parsed.is_indian_currency === false ? 'not_currency' : (parsed.status || 'uncertain'));
+
       const type = parsed.type || (isIndian ? 'banknote' : null);
       const denom = parsed.denomination !== undefined && parsed.denomination !== null ? parsed.denomination : null;
       const symbol = parsed.symbol || '₹';
-      const displayName = parsed.display_name || (status === 'recognized' && denom ? `${symbol}${denom} Indian Rupee` : (status === 'uncertain' ? 'Unable to identify Indian currency' : 'Indian currency not detected'));
-      const conf = typeof parsed.confidence === 'number' ? parsed.confidence : (status === 'recognized' ? 0.95 : 0);
+      
+      let displayName = parsed.display_name || (status === 'recognized' && denom ? `${symbol}${denom} Indian Rupee` : (status === 'uncertain' ? 'Unable to identify Indian currency' : 'Indian currency not detected'));
+      if (hasMultipleNotes) {
+        const denomList = recognizedItems.map((item) => `${symbol}${item.denomination || '?'}`).join(', ');
+        displayName = `Multiple Indian Banknotes: ${denomList}`;
+      }
+
+      const conf = typeof parsed.confidence === 'number' ? parsed.confidence : (status === 'recognized' ? 0.96 : 0);
       const side = parsed.side || null;
-      const visibleTextArr = Array.isArray(parsed.visible_text) ? parsed.visible_text : [];
+      
+      let visibleTextArr = Array.isArray(parsed.visible_text) ? parsed.visible_text : [];
+      if (hasMultipleNotes) {
+        visibleTextArr = recognizedItems.map((item) => `${symbol}${item.denomination} ${item.type || 'banknote'}`);
+      }
+
       const reason = parsed.reason || null;
 
       const currencyData = {
-        is_indian_currency: parsed.is_indian_currency,
-        currency: parsed.currency || (isIndian ? 'Indian Rupee' : null),
-        currency_code: parsed.currency_code || (isIndian ? 'INR' : null),
-        symbol: parsed.symbol || (isIndian ? '₹' : null),
+        is_indian_currency: isIndian,
+        currency: isIndian ? 'Indian Rupee' : null,
+        currency_code: isIndian ? 'INR' : null,
+        symbol: isIndian ? '₹' : null,
         type: type,
         denomination: denom,
         display_name: displayName,
@@ -290,6 +297,7 @@ Return ONLY a valid JSON object matching this exact schema:
         visible_text: visibleTextArr,
         status: status,
         reason: reason,
+        multiple_items: hasMultipleNotes ? recognizedItems : undefined,
       };
 
       let title = displayName;
@@ -300,22 +308,35 @@ Return ONLY a valid JSON object matching this exact schema:
 
       if (status === 'recognized') {
         const typeLabel = type === 'coin' ? 'Coin' : 'Banknote';
-        title = `${displayName} (${typeLabel})`;
-        summary = `Indian Rupee ${typeLabel} of denomination ${symbol}${denom} identified with ${Math.round(conf * 100)}% confidence.${side ? ` ${side.charAt(0).toUpperCase() + side.slice(1)} side visible.` : ''}`;
-        spokenScript = `Indian currency detected: ${displayName}, ${typeLabel}.${side ? ` ${side} side visible.` : ''} Confidence is ${Math.round(conf * 100)} percent.`;
-        keyAttributes = [
-          { key: 'Currency', value: 'Indian Rupee (INR)' },
-          { key: 'Denomination', value: `${symbol}${denom}` },
-          { key: 'Type', value: typeLabel },
-          { key: 'Side', value: side ? (side === 'front' ? 'Front (Obverse)' : 'Back (Reverse)') : 'Not Specified' },
-          { key: 'Status', value: 'Recognized' },
-          { key: 'Visible Evidence', value: visibleTextArr.length > 0 ? visibleTextArr.join(', ') : 'Visual features identified' },
-        ];
+        if (hasMultipleNotes) {
+          const denomText = recognizedItems.map((i) => `₹${i.denomination}`).join(', ');
+          title = displayName;
+          summary = `Detected ${recognizedItems.length} Indian currency items: ${denomText} with high confidence.`;
+          spokenScript = `Multiple Indian banknotes detected: ${denomText}. Total ${recognizedItems.length} items.`;
+          keyAttributes = [
+            { key: 'Currency', value: 'Indian Rupee (INR)' },
+            { key: 'Detected Denominations', value: denomText },
+            { key: 'Count', value: `${recognizedItems.length} items` },
+            { key: 'Status', value: 'Recognized' },
+          ];
+        } else {
+          title = `${displayName} (${typeLabel})`;
+          summary = `Indian Rupee ${typeLabel} of denomination ${symbol}${denom} identified with ${Math.round(conf * 100)}% confidence.${side ? ` ${side.charAt(0).toUpperCase() + side.slice(1)} side visible.` : ''}`;
+          spokenScript = `Indian currency detected: ${symbol}${denom} Indian Rupee ${typeLabel}.${side ? ` ${side} side visible.` : ''}`;
+          keyAttributes = [
+            { key: 'Currency', value: 'Indian Rupee (INR)' },
+            { key: 'Denomination', value: `${symbol}${denom}` },
+            { key: 'Type', value: typeLabel },
+            { key: 'Side', value: side ? (side === 'front' ? 'Front (Obverse)' : 'Back (Reverse)') : 'Not Specified' },
+            { key: 'Status', value: 'Recognized' },
+            { key: 'Visible Evidence', value: visibleTextArr.length > 0 ? visibleTextArr.join(', ') : 'Visual features identified' },
+          ];
+        }
       } else if (status === 'uncertain') {
         title = 'Unable to Identify Indian Currency';
-        summary = reason || 'Please place the Indian currency clearly inside the scanner and try again.';
+        summary = reason || 'Please hold the Indian currency clearly inside the camera and try again.';
         anomalyWarning = reason || 'The image does not contain enough clear visual information.';
-        spokenScript = 'Unable to identify Indian currency. Please place the banknote or coin clearly inside the scanner and try again.';
+        spokenScript = 'Unable to identify Indian currency. Please hold the banknote or coin closer and steady.';
         keyAttributes = [
           { key: 'Currency Detection', value: 'Uncertain / Unclear Image' },
           { key: 'Reason', value: reason || 'Insufficient visual evidence or blurry image' },
@@ -323,9 +344,9 @@ Return ONLY a valid JSON object matching this exact schema:
       } else {
         // not_currency
         title = 'No Indian Currency Detected';
-        summary = reason || 'Please scan an Indian banknote or coin.';
+        summary = reason || 'Please place an Indian banknote or coin in front of the camera.';
         anomalyWarning = reason || 'The image does not appear to contain Indian currency.';
-        spokenScript = 'No Indian currency detected. Please scan an Indian banknote or coin.';
+        spokenScript = 'No Indian currency detected. Please hold an Indian banknote or coin in front of the camera.';
         keyAttributes = [
           { key: 'Currency Detection', value: 'No Indian Currency Detected' },
           { key: 'Reason', value: reason || 'The scanned object is not an Indian banknote or coin' },
