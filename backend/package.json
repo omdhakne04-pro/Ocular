@@ -1,0 +1,33 @@
+{
+  "name": "ocular-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Ocular - Enterprise Visual Intelligence & Assistive Inspection Platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.49.1",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "zod": "^3.24.2"
+  },
+  "keywords": [
+    "ocular",
+    "gemini",
+    "vision",
+    "computer-vision",
+    "supabase",
+    "assistive-tech",
+    "express"
+  ],
+  "author": "Ocular Team",
+  "license": "MIT"
+}
