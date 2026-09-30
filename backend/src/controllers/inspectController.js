@@ -60,6 +60,9 @@ async function analyzeImage(req, res) {
         ...recordPayload,
         created_at: new Date().toISOString(),
       }),
+      spoken_script: inspectionResult.spoken_script,
+      spoken_script_hi: inspectionResult.spoken_script_hi || inspectionResult.spoken_script,
+      spoken_script_en: inspectionResult.spoken_script_en || null,
       currency_data: inspectionResult.currency_data || null,
     };
 
