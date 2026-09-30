@@ -15,9 +15,24 @@ import {
 
 export default function ResultCard({ inspection, autoPlayAudio = true, onScanAgain }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [speechRate, setSpeechRate] = useState(1.0);
+  const [speechRate, setSpeechRate] = useState(0.95); // Natural relaxed pacing for Indian speech
+  const [speechLang, setSpeechLang] = useState('hi'); // Default: Hindi (Indian tone)
   const [copied, setCopied] = useState(false);
   const [showRawOCR, setShowRawOCR] = useState(false);
+  const [voices, setVoices] = useState([]);
+
+  // Initialize and load system voices (Chrome, Edge, Safari, Firefox)
+  useEffect(() => {
+    if ('speechSynthesis' in window) {
+      const updateVoices = () => {
+        const available = window.speechSynthesis.getVoices() || [];
+        setVoices(available);
+      };
+
+      updateVoices();
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, []);
 
   const hasAnomaly =
     inspection?.anomaly_warning &&
@@ -39,26 +54,65 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
     } : null
   );
 
-  // Trigger automated speech playback whenever a new inspection arrives
-  useEffect(() => {
-    if (inspection?.spoken_script && autoPlayAudio) {
-      speakScript(inspection.spoken_script);
+  // Helper to get the best matching voice for Hindi or Indian tone
+  const getIndianVoice = (targetLang = speechLang) => {
+    if (!('speechSynthesis' in window)) return null;
+    const currentVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices() || [];
+
+    if (targetLang === 'hi') {
+      // 1. Try to find an authentic Hindi voice (hi-IN, Google हिन्दी, Microsoft Hemant/Kalpana, Swara, Madhur)
+      const hindiVoice = currentVoices.find((v) =>
+        v.lang === 'hi-IN' ||
+        v.lang === 'hi_IN' ||
+        v.lang.toLowerCase().startsWith('hi') ||
+        v.name.toLowerCase().includes('hindi') ||
+        v.name.toLowerCase().includes('kalpana') ||
+        v.name.toLowerCase().includes('hemant') ||
+        v.name.toLowerCase().includes('swara') ||
+        v.name.toLowerCase().includes('madhur')
+      );
+      if (hindiVoice) return { voice: hindiVoice, lang: hindiVoice.lang || 'hi-IN' };
+
+      // 2. Fallback to an Indian English voice (en-IN)
+      const indianVoice = currentVoices.find((v) =>
+        v.lang === 'en-IN' ||
+        v.lang === 'en_IN' ||
+        v.name.toLowerCase().includes('india') ||
+        v.name.toLowerCase().includes('neerja') ||
+        v.name.toLowerCase().includes('prabhat')
+      );
+      if (indianVoice) return { voice: indianVoice, lang: indianVoice.lang || 'en-IN' };
+
+      return { voice: null, lang: 'hi-IN' };
+    } else {
+      // English mode: Prefer Indian English (en-IN)
+      const indianEnVoice = currentVoices.find((v) =>
+        v.lang === 'en-IN' ||
+        v.lang === 'en_IN' ||
+        v.name.toLowerCase().includes('india') ||
+        v.name.toLowerCase().includes('neerja') ||
+        v.name.toLowerCase().includes('prabhat')
+      );
+      if (indianEnVoice) return { voice: indianEnVoice, lang: indianEnVoice.lang || 'en-IN' };
+      return { voice: null, lang: 'en-US' };
     }
+  };
 
-    return () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, [inspection]);
-
-  const speakScript = (text) => {
+  const speakScript = (text, targetLang = speechLang) => {
     if (!('speechSynthesis' in window) || !text) return;
 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = speechRate;
+    utterance.rate = speechRate || 0.95;
     utterance.pitch = 1.0;
+
+    const voiceConfig = getIndianVoice(targetLang);
+    if (voiceConfig?.voice) {
+      utterance.voice = voiceConfig.voice;
+      utterance.lang = voiceConfig.lang;
+    } else if (voiceConfig?.lang) {
+      utterance.lang = voiceConfig.lang;
+    }
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
@@ -66,6 +120,25 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
 
     window.speechSynthesis.speak(utterance);
   };
+
+  // Trigger automated speech playback whenever a new inspection arrives
+  useEffect(() => {
+    if (autoPlayAudio && inspection) {
+      const textToSpeak = speechLang === 'hi'
+        ? (inspection.spoken_script_hi || inspection.spoken_script)
+        : (inspection.spoken_script_en || inspection.spoken_script);
+
+      if (textToSpeak) {
+        speakScript(textToSpeak, speechLang);
+      }
+    }
+
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [inspection, speechLang]);
 
   const stopSpeaking = () => {
     if ('speechSynthesis' in window) {
@@ -75,8 +148,24 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
   };
 
   const replaySpeaking = () => {
-    if (inspection?.spoken_script) {
-      speakScript(inspection.spoken_script);
+    const textToSpeak = speechLang === 'hi'
+      ? (inspection?.spoken_script_hi || inspection?.spoken_script)
+      : (inspection?.spoken_script_en || inspection?.spoken_script);
+
+    if (textToSpeak) {
+      speakScript(textToSpeak, speechLang);
+    }
+  };
+
+  const toggleSpeechLang = (lang) => {
+    setSpeechLang(lang);
+    if (inspection) {
+      const text = lang === 'hi'
+        ? (inspection.spoken_script_hi || inspection.spoken_script)
+        : (inspection.spoken_script_en || inspection.spoken_script);
+      if (text) {
+        speakScript(text, lang);
+      }
     }
   };
 
@@ -226,26 +315,48 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
           )}
         </div>
 
-        {/* Audio Synthesizer */}
-        <div className="p-4 rounded-xl bg-slate-950/90 border border-cyan-900/40 shadow-inner flex flex-col gap-3">
-          <div className="flex items-center justify-between">
+        {/* Audio Synthesizer with Hindi / Indian Tone Voice */}
+        <div className="p-4 rounded-xl bg-slate-950/90 border border-emerald-900/50 shadow-inner flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-cyan-950 text-cyan-400">
+              <div className="p-1.5 rounded-lg bg-emerald-950 text-emerald-400">
                 <Volume2 className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-                Spoken Voice Feedback
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                  {speechLang === 'hi' ? 'भारतीय आवाज़ (Hindi Audio)' : 'Spoken Voice (Indian Tone)'}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-mono font-bold">
+                  🇮🇳 {speechLang === 'hi' ? 'hi-IN' : 'en-IN'}
+                </span>
+              </div>
             </div>
 
-            {isSpeaking && (
-              <div className="flex items-center gap-1 h-5 px-2">
-                <div className="w-1 bg-cyan-400 rounded-full animate-wave-bar" style={{ animationDelay: '0ms' }} />
-                <div className="w-1 bg-cyan-400 rounded-full animate-wave-bar" style={{ animationDelay: '150ms' }} />
-                <div className="w-1 bg-cyan-400 rounded-full animate-wave-bar" style={{ animationDelay: '300ms' }} />
-                <div className="w-1 bg-cyan-400 rounded-full animate-wave-bar" style={{ animationDelay: '450ms' }} />
-              </div>
-            )}
+            {/* Language Selector: Hindi vs English */}
+            <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+              <button
+                type="button"
+                onClick={() => toggleSpeechLang('hi')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                  speechLang === 'hi'
+                    ? 'bg-emerald-500 text-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🇮🇳 हिंदी
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSpeechLang('en')}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                  speechLang === 'en'
+                    ? 'bg-cyan-500 text-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                EN
+              </button>
+            </div>
 
             <div className="flex items-center gap-1.5">
               <button
@@ -254,7 +365,7 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
                   setSpeechRate(nextRate);
                   if (isSpeaking) {
                     stopSpeaking();
-                    speakScript(inspection.spoken_script);
+                    replaySpeaking();
                   }
                 }}
                 className="px-2 py-1 rounded text-[11px] font-mono font-medium bg-slate-800 text-slate-300 hover:text-white"
@@ -272,18 +383,28 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
               ) : (
                 <button
                   onClick={replaySpeaking}
-                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 transition-colors"
+                  className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800 hover:bg-emerald-900 transition-colors"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Replay</span>
+                  <span>{speechLang === 'hi' ? 'बोलें (Replay)' : 'Replay'}</span>
                 </button>
               )}
             </div>
           </div>
 
-          <p className="text-xs text-slate-300 italic bg-black/40 p-3 rounded-lg border border-slate-800 leading-relaxed font-sans">
-            "{inspection.spoken_script}"
-          </p>
+          {/* Spoken Text Display */}
+          <div className="bg-black/50 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+            <p className="text-sm font-semibold text-emerald-300 leading-relaxed font-sans">
+              "{speechLang === 'hi'
+                ? (inspection.spoken_script_hi || inspection.spoken_script)
+                : (inspection.spoken_script_en || inspection.spoken_script)}"
+            </p>
+            {inspection.spoken_script_en && speechLang === 'hi' && (
+              <p className="text-[11px] text-slate-400 italic">
+                English: "{inspection.spoken_script_en}"
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Structured Attributes Table */}
@@ -376,14 +497,45 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
 
       {/* Audio Playback & Voice Readout Console */}
       <div className="p-4 rounded-xl bg-slate-950/90 border border-cyan-900/40 shadow-inner flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-cyan-950 text-cyan-400">
               <Volume2 className="w-4 h-4" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-              Audio Assistive Synthesizer
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                {speechLang === 'hi' ? 'भारतीय आवाज़ (Hindi Audio)' : 'Audio Assistive Voice'}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-400 font-mono font-bold">
+                🇮🇳 {speechLang === 'hi' ? 'hi-IN' : 'en-IN'}
+              </span>
+            </div>
+          </div>
+
+          {/* Language Selector: Hindi vs English */}
+          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+            <button
+              type="button"
+              onClick={() => toggleSpeechLang('hi')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                speechLang === 'hi'
+                  ? 'bg-cyan-500 text-black shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              🇮🇳 हिंदी
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSpeechLang('en')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                speechLang === 'en'
+                  ? 'bg-cyan-500 text-black shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              EN
+            </button>
           </div>
 
           {/* Sound wave equalizer animation when speaking */}
@@ -404,7 +556,7 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
                 setSpeechRate(nextRate);
                 if (isSpeaking) {
                   stopSpeaking();
-                  speakScript(inspection.spoken_script);
+                  replaySpeaking();
                 }
               }}
               title="Change speech rate"
@@ -428,15 +580,25 @@ export default function ResultCard({ inspection, autoPlayAudio = true, onScanAga
                 className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Replay</span>
+                <span>{speechLang === 'hi' ? 'बोलें (Replay)' : 'Replay'}</span>
               </button>
             )}
           </div>
         </div>
 
-        <p className="text-xs text-slate-300 italic bg-black/40 p-3 rounded-lg border border-slate-800 leading-relaxed font-sans">
-          "{inspection.spoken_script}"
-        </p>
+        {/* Spoken Text Display */}
+        <div className="bg-black/50 p-3.5 rounded-lg border border-slate-800 flex flex-col gap-1.5">
+          <p className="text-sm font-semibold text-cyan-300 leading-relaxed font-sans">
+            "{speechLang === 'hi'
+              ? (inspection.spoken_script_hi || inspection.spoken_script)
+              : (inspection.spoken_script_en || inspection.spoken_script)}"
+          </p>
+          {inspection.spoken_script_en && speechLang === 'hi' && (
+            <p className="text-[11px] text-slate-400 italic">
+              English: "{inspection.spoken_script_en}"
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Anomaly or Warning Banner if flagged */}

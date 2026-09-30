@@ -62,6 +62,8 @@ Never invent information. If the image does not contain Indian currency, or is c
 
 If one or more Indian banknotes are visible, mark status: "recognized", is_indian_currency: true. If multiple notes are visible, pick the primary or highest denomination for "denomination", list all recognized denominations and text in "visible_text", and reflect them in "display_name".
 
+IMPORTANT: The spoken voice feedback MUST be in natural, conversational Hindi (हिंदी) with an authentic Indian tone, because the primary audience is Indian.
+
 Return ONLY a valid JSON object matching this exact structure:
 
 If Indian currency is recognized (single or multiple notes):
@@ -76,6 +78,7 @@ If Indian currency is recognized (single or multiple notes):
   "confidence": 0.98,
   "side": "front",
   "visible_text": ["500", "RESERVE BANK OF INDIA", "MAHATMA GANDHI"],
+  "spoken_script_hi": "यह 500 रुपये का भारतीय नोट है। सामने का भाग दिख रहा है।",
   "status": "recognized",
   "reason": null
 }
@@ -92,6 +95,7 @@ For an Indian coin:
   "confidence": 0.91,
   "side": null,
   "visible_text": ["10", "RUPEES"],
+  "spoken_script_hi": "यह 10 रुपये का भारतीय सिक्का है।",
   "status": "recognized",
   "reason": null
 }
@@ -108,6 +112,7 @@ If the image is NOT Indian currency:
   "confidence": 0,
   "side": null,
   "visible_text": [],
+  "spoken_script_hi": "कोई भारतीय मुद्रा नहीं मिली। कृपया कैमरे के सामने भारतीय नोट या सिक्का दिखाएं।",
   "status": "not_currency",
   "reason": "The image does not appear to contain Indian currency."
 }
@@ -124,6 +129,7 @@ If the image cannot be reliably identified:
   "confidence": 0,
   "side": null,
   "visible_text": [],
+  "spoken_script_hi": "मुद्रा स्पष्ट नहीं दिख रही है। कृपया नोट या सिक्के को कैमरे के सामने सीधा और स्थिर रखें।",
   "status": "uncertain",
   "reason": "The image does not contain enough clear visual information."
 }`;
@@ -304,15 +310,22 @@ Return ONLY a valid JSON object matching this exact schema:
       let summary = '';
       let anomalyWarning = 'None';
       let spokenScript = '';
+      let spokenScriptHi = '';
+      let spokenScriptEn = '';
       let keyAttributes = [];
 
       if (status === 'recognized') {
         const typeLabel = type === 'coin' ? 'Coin' : 'Banknote';
+        const typeHindi = type === 'coin' ? 'सिक्का' : 'नोट';
+        const sideHindi = side === 'front' ? 'सामने का भाग दिख रहा है।' : (side === 'back' ? 'पीछे का भाग दिख रहा है।' : '');
+
         if (hasMultipleNotes) {
           const denomText = recognizedItems.map((i) => `₹${i.denomination}`).join(', ');
           title = displayName;
           summary = `Detected ${recognizedItems.length} Indian currency items: ${denomText} with high confidence.`;
-          spokenScript = `Multiple Indian banknotes detected: ${denomText}. Total ${recognizedItems.length} items.`;
+          spokenScriptHi = parsed.spoken_script_hi || `कई भारतीय नोट पहचाने गए हैं: ${denomText} रुपये। कुल ${recognizedItems.length} नोट हैं।`;
+          spokenScriptEn = `Multiple Indian banknotes detected: ${denomText}. Total ${recognizedItems.length} items.`;
+          spokenScript = spokenScriptHi;
           keyAttributes = [
             { key: 'Currency', value: 'Indian Rupee (INR)' },
             { key: 'Detected Denominations', value: denomText },
@@ -322,12 +335,14 @@ Return ONLY a valid JSON object matching this exact schema:
         } else {
           title = `${displayName} (${typeLabel})`;
           summary = `Indian Rupee ${typeLabel} of denomination ${symbol}${denom} identified with ${Math.round(conf * 100)}% confidence.${side ? ` ${side.charAt(0).toUpperCase() + side.slice(1)} side visible.` : ''}`;
-          spokenScript = `Indian currency detected: ${symbol}${denom} Indian Rupee ${typeLabel}.${side ? ` ${side} side visible.` : ''}`;
+          spokenScriptHi = parsed.spoken_script_hi || `यह ${denom} रुपये का भारतीय ${typeHindi} है। ${sideHindi}`.trim();
+          spokenScriptEn = `Indian currency detected: ${symbol}${denom} Indian Rupee ${typeLabel}.${side ? ` ${side} side visible.` : ''}`;
+          spokenScript = spokenScriptHi;
           keyAttributes = [
             { key: 'Currency', value: 'Indian Rupee (INR)' },
             { key: 'Denomination', value: `${symbol}${denom}` },
-            { key: 'Type', value: typeLabel },
-            { key: 'Side', value: side ? (side === 'front' ? 'Front (Obverse)' : 'Back (Reverse)') : 'Not Specified' },
+            { key: 'Type', value: `${typeLabel} (${typeHindi})` },
+            { key: 'Side', value: side ? (side === 'front' ? 'Front (सामने)' : 'Back (पीछे)') : 'Not Specified' },
             { key: 'Status', value: 'Recognized' },
             { key: 'Visible Evidence', value: visibleTextArr.length > 0 ? visibleTextArr.join(', ') : 'Visual features identified' },
           ];
@@ -336,7 +351,9 @@ Return ONLY a valid JSON object matching this exact schema:
         title = 'Unable to Identify Indian Currency';
         summary = reason || 'Please hold the Indian currency clearly inside the camera and try again.';
         anomalyWarning = reason || 'The image does not contain enough clear visual information.';
-        spokenScript = 'Unable to identify Indian currency. Please hold the banknote or coin closer and steady.';
+        spokenScriptHi = parsed.spoken_script_hi || 'मुद्रा स्पष्ट नहीं दिख रही है। कृपया नोट या सिक्के को कैमरे के सामने सीधा और स्थिर रखें।';
+        spokenScriptEn = 'Unable to identify Indian currency. Please hold the banknote or coin closer and steady.';
+        spokenScript = spokenScriptHi;
         keyAttributes = [
           { key: 'Currency Detection', value: 'Uncertain / Unclear Image' },
           { key: 'Reason', value: reason || 'Insufficient visual evidence or blurry image' },
@@ -346,7 +363,9 @@ Return ONLY a valid JSON object matching this exact schema:
         title = 'No Indian Currency Detected';
         summary = reason || 'Please place an Indian banknote or coin in front of the camera.';
         anomalyWarning = reason || 'The image does not appear to contain Indian currency.';
-        spokenScript = 'No Indian currency detected. Please hold an Indian banknote or coin in front of the camera.';
+        spokenScriptHi = parsed.spoken_script_hi || 'कोई भारतीय मुद्रा नहीं मिली। कृपया कैमरे के सामने भारतीय नोट या सिक्का दिखाएं।';
+        spokenScriptEn = 'No Indian currency detected. Please hold an Indian banknote or coin in front of the camera.';
+        spokenScript = spokenScriptHi;
         keyAttributes = [
           { key: 'Currency Detection', value: 'No Indian Currency Detected' },
           { key: 'Reason', value: reason || 'The scanned object is not an Indian banknote or coin' },
@@ -361,7 +380,9 @@ Return ONLY a valid JSON object matching this exact schema:
         summary,
         anomaly_warning: anomalyWarning,
         key_attributes: keyAttributes,
-        spoken_script: spokenScript,
+        spoken_script: spokenScript, // Hindi spoken voice readout
+        spoken_script_hi: spokenScriptHi,
+        spoken_script_en: spokenScriptEn,
         currency_data: currencyData,
       };
     }
@@ -375,7 +396,9 @@ Return ONLY a valid JSON object matching this exact schema:
       summary: parsed.summary || 'Visual inspection completed successfully.',
       anomaly_warning: parsed.anomaly_warning || 'None',
       key_attributes: Array.isArray(parsed.key_attributes) ? parsed.key_attributes : [],
-      spoken_script: parsed.spoken_script || parsed.summary || 'Inspection completed.',
+      spoken_script: parsed.spoken_script_hi || parsed.spoken_script || parsed.summary || 'निरीक्षण पूरा हुआ।',
+      spoken_script_hi: parsed.spoken_script_hi || parsed.spoken_script || 'निरीक्षण पूरा हुआ।',
+      spoken_script_en: parsed.spoken_script_en || parsed.summary || 'Inspection completed.',
     };
   } catch (error) {
     console.error('[Gemini API] Error calling Gemini Vision model:', error.message);

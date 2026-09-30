@@ -12,8 +12,25 @@ export default function Navbar() {
   const testAudioTone = () => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance('Ocular visual intelligence audio engine is active and ready.');
-      utterance.rate = 1.05;
+      const utterance = new SpeechSynthesisUtterance('ओक्युलर विजुअल इंटेलिजेंस वॉयस इंजन सक्रिय है।');
+      utterance.lang = 'hi-IN';
+      utterance.rate = 0.95;
+
+      const voices = window.speechSynthesis.getVoices() || [];
+      const hindiVoice = voices.find((v) =>
+        v.lang === 'hi-IN' ||
+        v.lang === 'hi_IN' ||
+        v.lang.toLowerCase().startsWith('hi') ||
+        v.name.toLowerCase().includes('hindi') ||
+        v.name.toLowerCase().includes('kalpana') ||
+        v.name.toLowerCase().includes('hemant') ||
+        v.name.toLowerCase().includes('swara')
+      ) || voices.find((v) => v.lang === 'en-IN' || v.name.toLowerCase().includes('india'));
+
+      if (hindiVoice) {
+        utterance.voice = hindiVoice;
+      }
+
       window.speechSynthesis.speak(utterance);
     }
   };
